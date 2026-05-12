@@ -14,7 +14,7 @@ import {
 import { useApplyAsCreator } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { requestDevnetAirdrop } from "@/lib/airdrop";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useApplyAsCreatorOnChain } from "@/hooks/useApplyAsCreatorOnChain";
 
@@ -70,10 +70,9 @@ export default function CreatorApplyPage() {
     if (!publicKey) return;
     setAirdropping(true);
     try {
-      const sig = await connection.requestAirdrop(publicKey, LAMPORTS_PER_SOL);
-      await connection.confirmTransaction(sig, "confirmed");
+      await requestDevnetAirdrop(connection, publicKey);
       const bal = await connection.getBalance(publicKey);
-      setSolBalance(bal / LAMPORTS_PER_SOL);
+      setSolBalance(bal / 1_000_000_000);
       toast({ title: "Airdrop received!", description: "1 devnet SOL added to your wallet." });
     } catch (err: any) {
       toast({ title: "Airdrop failed", description: err?.message ?? "Try again in a few seconds.", variant: "destructive" });

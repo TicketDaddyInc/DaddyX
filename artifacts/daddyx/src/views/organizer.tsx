@@ -9,9 +9,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useGetOrganizerEvents, getGetOrganizerEventsQueryKey, useCreateEvent } from "@workspace/api-client-react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useInitializeEvent } from "@/hooks/useInitializeEvent";
 import { useOnChainCreatorStatus } from "@/hooks/useOnChainCreatorStatus";
+import { requestDevnetAirdrop } from "@/lib/airdrop";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -86,12 +86,19 @@ export default function OrganizerPage() {
     if (!publicKey) return;
     setAirdropping(true);
     try {
-      const sig = await connection.requestAirdrop(publicKey, LAMPORTS_PER_SOL);
-      await connection.confirmTransaction(sig, "confirmed");
+      await requestDevnetAirdrop(connection, publicKey);
       await refreshBalance();
       toast({ title: "Airdrop received!", description: "1 devnet SOL added to your wallet." });
     } catch (err: any) {
-      toast({ title: "Airdrop failed", description: err?.message ?? "Try again in a few seconds.", variant: "destructive" });
+      const msg: string = err?.message ?? "Try again in a few seconds.";
+      const isFaucetLimit = msg.includes("faucet.solana.com");
+      toast({
+        title: "Airdrop failed",
+        description: isFaucetLimit
+          ? msg  // already contains the helpful URL
+          : msg,
+        variant: "destructive",
+      });
     } finally {
       setAirdropping(false);
     }
