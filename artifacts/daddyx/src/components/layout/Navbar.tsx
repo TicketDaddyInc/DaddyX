@@ -1,5 +1,8 @@
+"use client";
+
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, X, Coins, Wallet } from "lucide-react";
 
 const NAV_LINKS = [
@@ -11,7 +14,7 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
-  const [location] = useLocation();
+  const pathname = usePathname();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#131313]/90 backdrop-blur-md border-b border-white/[0.06]">
@@ -30,7 +33,7 @@ export default function Navbar() {
               key={href}
               href={href}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors duration-150 ${
-                location.startsWith(href)
+                pathname.startsWith(href)
                   ? "text-white bg-white/10"
                   : "text-white/55 hover:text-white hover:bg-white/5"
               }`}

@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import Link from "next/link";
 import { Coins } from "lucide-react";
 
 const FOOTER_LINKS = ["How It Works", "For Organizers", "For Fans", "Whitepaper", "Pitch Deck"];

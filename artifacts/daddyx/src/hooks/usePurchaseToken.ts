@@ -34,8 +34,10 @@ export function usePurchaseToken() {
     const [eventEscrowPda] = findEventEscrowPda(eventConfigPda);
 
     // Fetch on-chain accounts to resolve dynamic keys
-    const tokenState: any = await program.account.tokenState.fetch(tokenStatePda);
-    const eventConfig: any = await program.account.eventConfig.fetch(eventConfigPda);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tokenState: any = await (program.account as any).tokenState.fetch(tokenStatePda);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventConfig: any = await (program.account as any).eventConfig.fetch(eventConfigPda);
 
     const sig = await program.methods
       .purchaseToken(new BN(tokenId))

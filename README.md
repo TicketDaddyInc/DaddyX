@@ -17,13 +17,11 @@ The constraint **S > P** is enforced at the Anchor program level, making circula
 ├── tests/daddyx.ts               — TypeScript Anchor tests
 ├── Anchor.toml                   — Anchor config (devnet)
 ├── artifacts/
-│   ├── daddyx/                   — React + Vite frontend
-│   └── api-server/               — Express API backend
+│   └── daddyx/                   — Next.js app (frontend + API routes)
 └── lib/
     ├── db/                       — Drizzle ORM + PostgreSQL schema
     ├── api-spec/                 — OpenAPI spec + Orval codegen config
-    ├── api-client-react/         — Generated React Query hooks
-    └── api-zod/                  — Generated Zod validation schemas
+    └── api-client-react/         — Generated React Query hooks
 ```
 
 ## Prerequisites
@@ -34,7 +32,7 @@ The constraint **S > P** is enforced at the Anchor program level, making circula
 | pnpm | 10+ |
 | Rust + Anchor | `anchor-cli 0.30` |
 | Solana CLI | 1.18+ |
-| PostgreSQL | 14+ (for API server) |
+| PostgreSQL | 14+ |
 
 ## Local Development
 
@@ -51,26 +49,20 @@ pnpm --filter @workspace/db run push
 # 4. Regenerate API client (after changing openapi.yaml)
 pnpm --filter @workspace/api-spec run codegen
 
-# 5. Start the frontend dev server  →  http://localhost:5173
+# 5. Start the Next.js dev server  →  http://localhost:3000
 pnpm dev
-
-# 6. Start the API server           →  http://localhost:3001
-pnpm dev:api
 ```
 
-The Vite dev server automatically proxies `/api/*` to the API server (port 3001 by default), so the frontend and backend work together without CORS configuration.
+The Next.js app serves both the frontend and all `/api/*` routes in a single process.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and set the values. The frontend and API server both pick up `.env` automatically.
+Copy `.env.example` to `.env` and set the values.
 
 | Variable | Where used | Default | Required |
 |---|---|---|---|
-| `PORT` | Frontend (Vite) | `5173` | No |
-| `BASE_PATH` | Frontend (Vite) | `/` | No |
-| `API_PORT` | Frontend proxy target | `3001` | No |
-| `DATABASE_URL` | API server + `@workspace/db` | — | **Yes** |
-| `LOG_LEVEL` | API server | `info` | No |
+| `PORT` | Next.js dev server | `3000` | No |
+| `DATABASE_URL` | `@workspace/db` | — | **Yes** |
 
 ## Solana Program
 

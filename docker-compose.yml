@@ -1,0 +1,21 @@
+# DaddyX — Dokploy Docker Compose
+#
+# The database is the managed Nile PostgreSQL instance.
+# Set DATABASE_URL in Dokploy's environment panel — do NOT commit real credentials.
+#
+# Deploy:
+#   dokploy → New Project → Docker Compose → point at this repo
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV:     production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      PORT:         3000
+      HOSTNAME:     0.0.0.0
+    ports:
+      - "${PORT:-3000}:3000"
