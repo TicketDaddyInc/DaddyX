@@ -20,6 +20,8 @@ import PriceChart from "@/components/PriceChart";
 import { useToast } from "@/hooks/use-toast";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { usePurchaseToken } from "@/hooks/usePurchaseToken";
+import { useClaimRevenue } from "@/hooks/useClaimRevenueOnChain";
+import { useClaimRevenue as useClaimRevenueApi } from "@workspace/api-client-react";
 import { findEventConfigPda } from "@/lib/anchor";
 import { explorerUrl } from "@/lib/constants";
 
@@ -49,6 +51,8 @@ export default function EventDetailPage() {
 
   const [purchasing, setPurchasing] = useState(false);
   const [txSig, setTxSig] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimTxSig, setClaimTxSig] = useState<string | null>(null);
 
   const event = useGetEvent(id!, { query: { queryKey: getGetEventQueryKey(id!) } });
   const simulation = useGetSimulation(id!, { query: { queryKey: ["sim", id!] } });
@@ -56,6 +60,8 @@ export default function EventDetailPage() {
   const purchase = useRecordPurchase();
 
   const { purchaseToken, connected, publicKey } = usePurchaseToken();
+  const { claimRevenue } = useClaimRevenue();
+  const claimApi = useClaimRevenueApi();
 
   const eventData = event.data?.event;
   const tokens = event.data?.tokens ?? [];
@@ -109,6 +115,47 @@ export default function EventDetailPage() {
       toast({ title: "Transaction failed", description: err.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setPurchasing(false);
+    }
+  }
+
+  // Claim revenue share for all owned tokens
+  async function handleClaimRevenue() {
+    if (!eventConfigPda || !publicKey) return;
+    setClaiming(true);
+    setClaimTxSig(null);
+    try {
+      // Find tokens owned by the connected wallet
+      const ownedTokens = tokens.filter((t: any) => t.currentOwner === publicKey.toBase58());
+      if (ownedTokens.length === 0) {
+        toast({ title: "No tokens to claim", description: "You don't own any tokens for this event.", variant: "destructive" });
+        return;
+      }
+
+      let lastSig = "";
+      for (const token of ownedTokens) {
+        if (token.revenueClaimed) continue;
+        lastSig = await claimRevenue(eventConfigPda, token.tokenId);
+      }
+
+      if (lastSig) {
+        setClaimTxSig(lastSig);
+        toast({ title: "Revenue claimed!", description: `Tx: ${lastSig.slice(0, 16)}…` });
+      }
+
+      // Mirror claim to DB
+      if (id && publicKey) {
+        claimApi.mutate(
+          { wallet: publicKey.toBase58(), eventId: id },
+          {
+            onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetEventQueryKey(id!) }),
+          }
+        );
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast({ title: "Claim failed", description: err.message ?? "Unknown error", variant: "destructive" });
+    } finally {
+      setClaiming(false);
     }
   }
 
@@ -450,9 +497,48 @@ export default function EventDetailPage() {
                   This event has been settled. Token holders can claim their share of{" "}
                   <span className="text-white font-medium">{formatSol(eventData.settledRevenue ?? 0)}</span> from the escrow.
                 </p>
-                <button className="w-full mt-3 bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 text-xs font-bold uppercase tracking-wider py-2.5 rounded-full transition-colors" data-testid="button-claim-revenue">
-                  Claim Revenue Share
-                </button>
+                {!connected ? (
+                  <div className="mt-3">
+                    <WalletMultiButton
+                      style={{
+                        width: "100%",
+                        justifyContent: "center",
+                        background: "rgba(34,197,94,0.15)",
+                        border: "1px solid rgba(34,197,94,0.3)",
+                        borderRadius: "9999px",
+                        color: "rgb(74,222,128)",
+                        fontSize: "11px",
+                        fontWeight: "700",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        padding: "10px 20px",
+                        height: "auto",
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      className="w-full mt-3 bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 text-xs font-bold uppercase tracking-wider py-2.5 rounded-full transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleClaimRevenue}
+                      disabled={claiming}
+                      data-testid="button-claim-revenue"
+                    >
+                      {claiming && <RefreshCw className="w-3 h-3 animate-spin" />}
+                      Claim Revenue Share
+                    </button>
+                    {claimTxSig && (
+                      <a
+                        href={explorerUrl("tx", claimTxSig)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 flex items-center justify-center gap-1 text-[10px] text-green-400/60 hover:text-green-400 transition-colors"
+                      >
+                        <ExternalLink className="w-3 h-3" /> View claim on Explorer
+                      </a>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

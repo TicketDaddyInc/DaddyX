@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, Coins, Wallet } from "lucide-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
 const NAV_LINKS = [
   { href: "/events", label: "Events" },
@@ -46,6 +47,22 @@ export default function Navbar() {
 
         {/* Desktop CTAs */}
         <div className="hidden md:flex items-center gap-3">
+          <WalletMultiButton
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: "9999px",
+              color: "rgba(255,255,255,0.8)",
+              fontSize: "11px",
+              fontWeight: "700",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              padding: "8px 20px",
+              height: "auto",
+              lineHeight: "1",
+            }}
+            data-testid="button-wallet-connect"
+          />
           <Link href="/creator/apply">
             <button
               className="border border-white/20 text-white/80 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider hover:text-white hover:border-white/40 transition-all duration-200"
@@ -91,6 +108,24 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="pt-3 space-y-2">
+              <div className="w-full" onClick={() => setOpen(false)}>
+                <WalletMultiButton
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    background: "transparent",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: "9999px",
+                    color: "rgba(255,255,255,0.8)",
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    padding: "12px 20px",
+                    height: "auto",
+                  }}
+                />
+              </div>
               <Link href="/creator/apply" onClick={() => setOpen(false)}>
                 <button className="w-full border border-white/20 text-white/80 px-5 py-3 rounded-full text-sm font-bold uppercase tracking-wider">
                   Apply as Creator

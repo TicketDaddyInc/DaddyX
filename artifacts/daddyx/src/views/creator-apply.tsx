@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CheckCircle, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/form";
 import { useApplyAsCreator } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useApplyAsCreatorOnChain } from "@/hooks/useApplyAsCreatorOnChain";
 
 const schema = z.object({
   wallet: z.string().min(32, "Enter a valid Solana wallet address"),
@@ -30,7 +33,10 @@ type FormData = z.infer<typeof schema>;
 
 export default function CreatorApplyPage() {
   const [submitted, setSubmitted] = useState(false);
+  const [applying, setApplying] = useState(false);
   const { toast } = useToast();
+  const { publicKey } = useWallet();
+  const { applyOnChain, connected } = useApplyAsCreatorOnChain();
 
   const apply = useApplyAsCreator();
   const form = useForm<FormData>({
@@ -41,17 +47,45 @@ export default function CreatorApplyPage() {
     },
   });
 
-  function onSubmit(data: FormData) {
-    apply.mutate(
-      { data: { ...data, website: data.website || undefined } },
-      {
-        onSuccess: () => setSubmitted(true),
-        onError: (err: any) => {
-          const msg = err?.response?.data?.message ?? "Application failed. Please try again.";
-          toast({ title: "Error", description: msg, variant: "destructive" });
-        },
+  // Auto-populate wallet field when Phantom connects
+  useEffect(() => {
+    if (publicKey) {
+      form.setValue("wallet", publicKey.toBase58(), { shouldValidate: true });
+    }
+  }, [publicKey, form]);
+
+  async function onSubmit(data: FormData) {
+    setApplying(true);
+    try {
+      // Step 1: Submit on-chain (if wallet connected)
+      if (connected) {
+        try {
+          await applyOnChain({ name: data.name, country: data.country, email: data.email });
+        } catch (chainErr: any) {
+          // If creator profile already exists on-chain, proceed — DB may not have it yet
+          const msg: string = chainErr?.message ?? "";
+          if (!msg.includes("already in use") && !msg.includes("already initialized")) {
+            throw chainErr;
+          }
+        }
       }
-    );
+
+      // Step 2: Mirror to database
+      apply.mutate(
+        { data: { ...data, website: data.website || undefined } },
+        {
+          onSuccess: () => setSubmitted(true),
+          onError: (err: any) => {
+            const msg = err?.response?.data?.message ?? "Application failed. Please try again.";
+            toast({ title: "Error", description: msg, variant: "destructive" });
+          },
+        }
+      );
+    } catch (err: any) {
+      toast({ title: "Transaction failed", description: err?.message ?? "Unknown error", variant: "destructive" });
+    } finally {
+      setApplying(false);
+    }
   }
 
   if (submitted) {
@@ -87,6 +121,51 @@ export default function CreatorApplyPage() {
             Become a DaddyX-approved event organizer. List events with token-based fan financing on Solana.
           </p>
         </div>
+
+        {/* Wallet connect banner */}
+        {!connected ? (
+          <div className="bg-card border border-card-border rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex-1">
+              <p className="text-sm text-white font-medium mb-1">Connect your Phantom wallet</p>
+              <p className="text-xs text-white/40">Connecting your wallet registers your application on-chain and auto-fills your address.</p>
+            </div>
+            <WalletMultiButton
+              style={{
+                background: "linear-gradient(135deg,#E63946,#c1121f)",
+                border: "0",
+                borderRadius: "9999px",
+                color: "#fff",
+                fontSize: "11px",
+                fontWeight: "700",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                padding: "10px 20px",
+                height: "auto",
+                whiteSpace: "nowrap",
+              }}
+              data-testid="button-wallet-connect-apply"
+            />
+          </div>
+        ) : (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+            <p className="text-xs text-green-400/80 font-mono flex-1 truncate">{publicKey?.toBase58()}</p>
+            <WalletMultiButton
+              style={{
+                background: "transparent",
+                border: "1px solid rgba(34,197,94,0.3)",
+                borderRadius: "9999px",
+                color: "rgba(34,197,94,0.7)",
+                fontSize: "10px",
+                fontWeight: "700",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                padding: "5px 12px",
+                height: "auto",
+              }}
+            />
+          </div>
+        )}
 
         <div className="bg-card border border-card-border rounded-xl p-6">
           <Form {...form}>
@@ -222,13 +301,13 @@ export default function CreatorApplyPage() {
               <Button
                 type="submit"
                 className="w-full gradient-red border-0 glow-red font-semibold h-11"
-                disabled={apply.isPending}
+                disabled={apply.isPending || applying}
                 data-testid="button-submit-application"
               >
-                {apply.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting…</>
+                {applying || apply.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {connected ? "Submitting on-chain…" : "Submitting…"}</>
                 ) : (
-                  "Submit Application"
+                  connected ? "Submit Application (On-Chain)" : "Submit Application"
                 )}
               </Button>
             </form>

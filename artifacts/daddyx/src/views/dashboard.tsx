@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Zap, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGetWalletPortfolio, getGetWalletPortfolioQueryKey, useClaimRevenue } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import Link from "next/link";
 
 function formatSol(sol: number): string {
@@ -23,9 +25,19 @@ const DEMO_WALLETS = [
 
 export default function DashboardPage() {
   const { toast } = useToast();
-  const [wallet, setWallet] = useState("fan1111111111111111111111111111");
-  const [inputValue, setInputValue] = useState("fan1111111111111111111111111111");
+  const { publicKey } = useWallet();
+  const connectedWallet = publicKey?.toBase58() ?? "";
+  const [wallet, setWallet] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const claim = useClaimRevenue();
+
+  // Sync wallet input with connected wallet when it changes
+  useEffect(() => {
+    if (connectedWallet) {
+      setWallet(connectedWallet);
+      setInputValue(connectedWallet);
+    }
+  }, [connectedWallet]);
 
   const portfolio = useGetWalletPortfolio(wallet, {
     query: {
@@ -60,8 +72,52 @@ export default function DashboardPage() {
           <p className="text-white/50 text-sm">View your DaddyX token portfolio and revenue claims.</p>
         </div>
 
-        {/* Wallet search */}
+        {/* Wallet connect prompt or active wallet */}
+        {!connectedWallet ? (
+          <div className="bg-card border border-card-border rounded-xl p-6 mb-6 flex flex-col items-center gap-4 text-center">
+            <p className="text-white/50 text-sm">Connect your wallet to view your portfolio automatically.</p>
+            <WalletMultiButton
+              style={{
+                background: "linear-gradient(135deg,#E63946,#c1121f)",
+                border: "0",
+                borderRadius: "9999px",
+                color: "#fff",
+                fontSize: "12px",
+                fontWeight: "700",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                padding: "10px 24px",
+                height: "auto",
+              }}
+              data-testid="button-wallet-connect-dashboard"
+            />
+          </div>
+        ) : (
+          <div className="bg-card border border-card-border rounded-xl p-4 mb-6 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+            <p className="text-xs text-white/60 font-mono flex-1 truncate">
+              {connectedWallet}
+            </p>
+            <WalletMultiButton
+              style={{
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: "9999px",
+                color: "rgba(255,255,255,0.6)",
+                fontSize: "10px",
+                fontWeight: "700",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                padding: "6px 14px",
+                height: "auto",
+              }}
+            />
+          </div>
+        )}
+
+        {/* Manual wallet lookup */}
         <div className="bg-card border border-card-border rounded-xl p-5 mb-6">
+          <p className="text-[10px] text-white/30 mb-3 uppercase tracking-wider">Look up any wallet</p>
           <div className="flex gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ShieldCheck, Users, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,20 +11,40 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useAdminApproveOnChain } from "@/hooks/useAdminApproveOnChain";
 import Link from "next/link";
 
 export default function AdminPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { publicKey } = useWallet();
+  const adminWallet = publicKey?.toBase58() ?? "";
 
   const pending = useListPendingCreators();
   const oracle = useGetOraclePending();
   const approve = useApproveCreator();
   const reject = useRejectCreator();
+  const { approveOnChain } = useAdminApproveOnChain();
 
-  function handleApprove(wallet: string) {
+  async function handleApprove(wallet: string) {
+    // Step 1: On-chain approve (if admin wallet connected)
+    if (adminWallet) {
+      try {
+        await approveOnChain(wallet);
+      } catch (chainErr: any) {
+        // If creator not found on-chain (e.g. applied via DB only), skip on-chain step
+        const msg: string = chainErr?.message ?? "";
+        if (!msg.includes("Account does not exist") && !msg.includes("does not exist")) {
+          toast({ title: "On-chain approval failed", description: msg, variant: "destructive" });
+          return;
+        }
+      }
+    }
+    // Step 2: DB update
     approve.mutate(
-      { data: { wallet, adminWallet: "admin" } },
+      { data: { wallet, adminWallet } },
       {
         onSuccess: () => {
           toast({ title: "Creator approved!", description: `${wallet.slice(0, 8)}… approved successfully.` });
@@ -38,7 +57,7 @@ export default function AdminPage() {
 
   function handleReject(wallet: string) {
     reject.mutate(
-      { data: { wallet, adminWallet: "admin" } },
+      { data: { wallet, adminWallet } },
       {
         onSuccess: () => {
           toast({ title: "Creator rejected", description: `${wallet.slice(0, 8)}… rejected.` });
@@ -53,15 +72,39 @@ export default function AdminPage() {
     <div className="min-h-screen bg-[#0A0A0A] pt-20">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-lg bg-[#E63946]/15 flex items-center justify-center">
-            <ShieldCheck className="w-5 h-5 text-[#E63946]" />
+        <div className="flex items-center justify-between gap-3 mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-[#E63946]/15 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5 text-[#E63946]" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
+              <p className="text-white/40 text-sm">Manage creator applications and oracle settlements.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
-            <p className="text-white/40 text-sm">Manage creator applications and oracle settlements.</p>
-          </div>
+          <WalletMultiButton
+            style={{
+              background: adminWallet ? "transparent" : "linear-gradient(135deg,#E63946,#c1121f)",
+              border: adminWallet ? "1px solid rgba(255,255,255,0.15)" : "0",
+              borderRadius: "9999px",
+              color: adminWallet ? "rgba(255,255,255,0.6)" : "#fff",
+              fontSize: "11px",
+              fontWeight: "700",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              padding: "8px 18px",
+              height: "auto",
+            }}
+            data-testid="button-wallet-connect-admin"
+          />
         </div>
+
+        {!adminWallet && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+            <ShieldCheck className="w-4 h-4 text-yellow-400 shrink-0" />
+            <p className="text-yellow-400/80 text-sm">Connect your admin wallet above to approve or reject creator applications.</p>
+          </div>
+        )}
 
         <Tabs defaultValue="creators">
           <TabsList className="bg-white/5 border border-white/10 mb-6">
