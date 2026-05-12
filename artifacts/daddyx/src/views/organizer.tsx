@@ -74,7 +74,7 @@ export default function OrganizerPage() {
     if (!publicKey) { setSolBalance(null); return; }
     try {
       const bal = await connection.getBalance(publicKey);
-      setSolBalance(bal / LAMPORTS_PER_SOL);
+      setSolBalance(bal / 1_000_000_000);
     } catch {
       setSolBalance(null);
     }
