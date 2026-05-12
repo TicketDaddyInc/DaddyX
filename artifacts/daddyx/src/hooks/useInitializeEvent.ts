@@ -75,8 +75,8 @@ export function useInitializeEvent() {
 
     const initialPriceLamports = solToLamports(initialPriceSol);
 
-    // Derive PDAs
-    const [eventConfigPda] = findEventConfigPda(eventId);
+    // Derive PDAs — use the already-padded 32-byte array so the seed matches on-chain
+    const [eventConfigPda] = findEventConfigPda(eventIdBytes);
     const [eventEscrowPda] = findEventEscrowPda(eventConfigPda);
     const [creatorProfilePda] = await findCreatorProfilePda(wallet.publicKey);
 

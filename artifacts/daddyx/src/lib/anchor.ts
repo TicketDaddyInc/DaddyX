@@ -29,9 +29,22 @@ export async function findCreatorProfilePda(
   );
 }
 
-export function findEventConfigPda(eventId: string): [PublicKey, number] {
+/**
+ * Derive the EventConfig PDA.
+ * Accepts either a raw string (will be zero-padded to 32 bytes) or an already-
+ * padded Uint8Array/Buffer of exactly 32 bytes — matching the on-chain seed
+ * which is a fixed [u8; 32] array.
+ */
+export function findEventConfigPda(eventId: string | Uint8Array): [PublicKey, number] {
+  let idBytes: Buffer;
+  if (typeof eventId === "string") {
+    idBytes = Buffer.alloc(32);
+    Buffer.from(eventId).copy(idBytes);
+  } else {
+    idBytes = Buffer.from(eventId);
+  }
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_EVENT_CONFIG), Buffer.from(eventId)],
+    [Buffer.from(SEED_EVENT_CONFIG), idBytes],
     DADDYX_PROGRAM_ID
   );
 }

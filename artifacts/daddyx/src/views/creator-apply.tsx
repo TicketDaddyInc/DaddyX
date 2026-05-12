@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CheckCircle, Loader2 } from "lucide-react";
+import { CheckCircle, Loader2, Droplets } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/form";
 import { useApplyAsCreator } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useApplyAsCreatorOnChain } from "@/hooks/useApplyAsCreatorOnChain";
 
@@ -34,8 +35,11 @@ type FormData = z.infer<typeof schema>;
 export default function CreatorApplyPage() {
   const [submitted, setSubmitted] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [airdropping, setAirdropping] = useState(false);
   const { toast } = useToast();
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
   const { applyOnChain, connected } = useApplyAsCreatorOnChain();
 
   const apply = useApplyAsCreator();
@@ -54,6 +58,30 @@ export default function CreatorApplyPage() {
     }
   }, [publicKey, form]);
 
+  // Fetch devnet SOL balance
+  useEffect(() => {
+    if (!publicKey) { setSolBalance(null); return; }
+    connection.getBalance(publicKey)
+      .then(b => setSolBalance(b / LAMPORTS_PER_SOL))
+      .catch(() => setSolBalance(null));
+  }, [publicKey, connection]);
+
+  const handleAirdrop = async () => {
+    if (!publicKey) return;
+    setAirdropping(true);
+    try {
+      const sig = await connection.requestAirdrop(publicKey, LAMPORTS_PER_SOL);
+      await connection.confirmTransaction(sig, "confirmed");
+      const bal = await connection.getBalance(publicKey);
+      setSolBalance(bal / LAMPORTS_PER_SOL);
+      toast({ title: "Airdrop received!", description: "1 devnet SOL added to your wallet." });
+    } catch (err: any) {
+      toast({ title: "Airdrop failed", description: err?.message ?? "Try again in a few seconds.", variant: "destructive" });
+    } finally {
+      setAirdropping(false);
+    }
+  };
+
   async function onSubmit(data: FormData) {
     setApplying(true);
     try {
@@ -62,9 +90,13 @@ export default function CreatorApplyPage() {
         try {
           await applyOnChain({ name: data.name, country: data.country, email: data.email });
         } catch (chainErr: any) {
-          // If creator profile already exists on-chain, proceed — DB may not have it yet
           const msg: string = chainErr?.message ?? "";
-          if (!msg.includes("already in use") && !msg.includes("already initialized")) {
+          // If creator profile already exists on-chain, proceed — DB may not have it yet
+          if (msg.includes("already in use") || msg.includes("already initialized")) {
+            // fine — continue to DB mirror
+          } else if (msg.includes("debit") || msg.includes("no record of a prior credit") || msg.includes("insufficient")) {
+            throw new Error("Insufficient SOL — click 'Get Devnet SOL' to fund your wallet first.");
+          } else {
             throw chainErr;
           }
         }
@@ -147,9 +179,26 @@ export default function CreatorApplyPage() {
             />
           </div>
         ) : (
-          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-6 flex items-center gap-3 flex-wrap">
             <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-            <p className="text-xs text-green-400/80 font-mono flex-1 truncate">{publicKey?.toBase58()}</p>
+            <p className="text-xs text-green-400/80 font-mono flex-1 truncate min-w-0">{publicKey?.toBase58()}</p>
+            {solBalance !== null && (
+              <span className="text-xs text-white/40 font-mono shrink-0">{solBalance.toFixed(3)} SOL</span>
+            )}
+            {solBalance !== null && solBalance < 0.05 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-[#E63946]/40 text-[#E63946] bg-transparent text-xs gap-1.5 shrink-0"
+                onClick={handleAirdrop}
+                disabled={airdropping}
+                data-testid="button-airdrop-apply"
+              >
+                {airdropping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Droplets className="w-3 h-3" />}
+                Get Devnet SOL
+              </Button>
+            )}
             <WalletMultiButton
               style={{
                 background: "transparent",

@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Plus, TrendingUp, Users, Zap, ExternalLink, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Search, Plus, Zap, ExternalLink, Loader2, ChevronUp, Droplets, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGetOrganizerEvents, getGetOrganizerEventsQueryKey, useCreateEvent } from "@workspace/api-client-react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useInitializeEvent } from "@/hooks/useInitializeEvent";
+import { useOnChainCreatorStatus } from "@/hooks/useOnChainCreatorStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -27,15 +29,19 @@ const DEMO_ORGANIZERS = [
 
 export default function OrganizerPage() {
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
   const connectedWallet = publicKey?.toBase58() ?? "";
   const [wallet, setWallet] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [airdropping, setAirdropping] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { initializeEvent, connected } = useInitializeEvent();
   const createEventApi = useCreateEvent();
+  const creatorStatus = useOnChainCreatorStatus(publicKey ?? null);
 
   // Default values for new event form
   const [newEvent, setNewEvent] = useState({
@@ -62,6 +68,34 @@ export default function OrganizerPage() {
       setInputValue(connectedWallet);
     }
   }, [connectedWallet]);
+
+  // Fetch devnet SOL balance whenever wallet changes
+  const refreshBalance = useCallback(async () => {
+    if (!publicKey) { setSolBalance(null); return; }
+    try {
+      const bal = await connection.getBalance(publicKey);
+      setSolBalance(bal / LAMPORTS_PER_SOL);
+    } catch {
+      setSolBalance(null);
+    }
+  }, [publicKey, connection]);
+
+  useEffect(() => { refreshBalance(); }, [refreshBalance]);
+
+  const handleAirdrop = async () => {
+    if (!publicKey) return;
+    setAirdropping(true);
+    try {
+      const sig = await connection.requestAirdrop(publicKey, LAMPORTS_PER_SOL);
+      await connection.confirmTransaction(sig, "confirmed");
+      await refreshBalance();
+      toast({ title: "Airdrop received!", description: "1 devnet SOL added to your wallet." });
+    } catch (err: any) {
+      toast({ title: "Airdrop failed", description: err?.message ?? "Try again in a few seconds.", variant: "destructive" });
+    } finally {
+      setAirdropping(false);
+    }
+  };
 
   const orgEvents = useGetOrganizerEvents(wallet, {
     query: {
@@ -144,7 +178,15 @@ export default function OrganizerPage() {
       );
     } catch (err: any) {
       console.error(err);
-      toast({ title: "Event creation failed", description: err?.message ?? "Unknown error", variant: "destructive" });
+      const msg: string = err?.message ?? "Unknown error";
+      const isNoBalance = msg.includes("debit") || msg.includes("no record of a prior credit") || msg.includes("insufficient");
+      toast({
+        title: "Event creation failed",
+        description: isNoBalance
+          ? "Your wallet has insufficient SOL. Click 'Get Devnet SOL' to fund it."
+          : msg,
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
@@ -162,7 +204,7 @@ export default function OrganizerPage() {
             <Button
               className="gradient-red border-0 glow-red-sm"
               onClick={() => setShowCreateForm((v) => !v)}
-              disabled={!connected}
+              disabled={!connected || creatorStatus !== "approved"}
               data-testid="button-create-event"
             >
               {showCreateForm ? <ChevronUp className="w-4 h-4 mr-1.5" /> : <Plus className="w-4 h-4 mr-1.5" />}
@@ -176,7 +218,7 @@ export default function OrganizerPage() {
           </div>
         </div>
 
-        {/* Wallet connect status */}
+        {/* ── Wallet connect status ─────────────────────────────── */}
         {!connectedWallet ? (
           <div className="bg-card border border-card-border rounded-xl p-6 mb-6 flex flex-col items-center gap-4 text-center">
             <p className="text-white/50 text-sm">Connect your wallet to automatically load your events.</p>
@@ -197,9 +239,26 @@ export default function OrganizerPage() {
             />
           </div>
         ) : (
-          <div className="bg-card border border-card-border rounded-xl p-4 mb-6 flex items-center gap-3">
+          <div className="bg-card border border-card-border rounded-xl p-4 mb-6 flex items-center gap-3 flex-wrap">
             <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-            <p className="text-xs text-white/60 font-mono flex-1 truncate">{connectedWallet}</p>
+            <p className="text-xs text-white/60 font-mono flex-1 truncate min-w-0">{connectedWallet}</p>
+            {/* Devnet balance + airdrop */}
+            {solBalance !== null && (
+              <span className="text-xs text-white/40 font-mono shrink-0">{solBalance.toFixed(3)} SOL</span>
+            )}
+            {solBalance !== null && solBalance < 0.05 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-[#E63946]/40 text-[#E63946] bg-transparent text-xs gap-1.5 shrink-0"
+                onClick={handleAirdrop}
+                disabled={airdropping}
+                data-testid="button-airdrop-organizer"
+              >
+                {airdropping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Droplets className="w-3 h-3" />}
+                Get Devnet SOL
+              </Button>
+            )}
             <WalletMultiButton
               style={{
                 background: "transparent",
@@ -214,6 +273,53 @@ export default function OrganizerPage() {
                 height: "auto",
               }}
             />
+          </div>
+        )}
+
+        {/* ── Creator status gate ───────────────────────────────── */}
+        {connectedWallet && creatorStatus === "loading" && (
+          <div className="bg-card border border-card-border rounded-xl p-5 mb-6 flex items-center gap-3 text-white/50 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Checking creator status…
+          </div>
+        )}
+
+        {connectedWallet && creatorStatus === "not-found" && (
+          <div className="bg-yellow-500/8 border border-yellow-500/30 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4" data-testid="banner-not-creator">
+            <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-yellow-300 mb-0.5">Creator account required</p>
+              <p className="text-xs text-white/50">
+                You must be an approved DaddyX Creator before you can create events. Apply below — review takes 2–3 business days.
+              </p>
+            </div>
+            <Link href="/creator/apply" className="shrink-0">
+              <Button className="gradient-red border-0 text-xs" data-testid="button-gate-apply">Apply as Creator</Button>
+            </Link>
+          </div>
+        )}
+
+        {connectedWallet && creatorStatus === "pending" && (
+          <div className="bg-blue-500/8 border border-blue-500/30 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4" data-testid="banner-pending-creator">
+            <Loader2 className="w-5 h-5 text-blue-400 shrink-0 animate-spin" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-blue-300 mb-0.5">Application under review</p>
+              <p className="text-xs text-white/50">
+                Your creator application is pending admin approval. You will be able to create events once approved.
+              </p>
+            </div>
+            <Link href="/creator/status" className="shrink-0">
+              <Button variant="outline" className="border-white/20 text-white/60 bg-transparent text-xs" data-testid="button-gate-status">Check Status</Button>
+            </Link>
+          </div>
+        )}
+
+        {connectedWallet && creatorStatus === "suspended" && (
+          <div className="bg-red-500/8 border border-red-500/30 rounded-xl p-5 mb-6 flex items-start gap-4" data-testid="banner-suspended-creator">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-300 mb-0.5">Account suspended</p>
+              <p className="text-xs text-white/50">Your creator account has been suspended. Please contact support.</p>
+            </div>
           </div>
         )}
 
@@ -254,8 +360,8 @@ export default function OrganizerPage() {
           </div>
         </div>
 
-        {/* Create Event Form */}
-        {showCreateForm && connected && (
+        {/* ── Create Event Form (only for approved creators) ──── */}
+        {showCreateForm && connected && creatorStatus === "approved" && (
           <div className="bg-card border border-[#E63946]/30 rounded-xl p-6 mb-6">
             <h2 className="text-base font-bold text-white mb-4 flex items-center gap-2">
               <Plus className="w-4 h-4 text-[#E63946]" /> Create New DaddyX Event
